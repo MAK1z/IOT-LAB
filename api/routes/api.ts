@@ -1,10 +1,23 @@
 import { Hono } from "hono";
-import booksRouter from "./books.js";
 import { bearerAuth } from "hono/bearer-auth";
 import { env } from "hono/adapter";
 import { Myinfo } from "../db/schema.js";
+import drizzle from "../db/drizzle.js";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+import { zValidator } from "@hono/zod-validator";
 
 const apiRouter = new Hono();
+
+function isValidString(str: any): str is string {
+  return typeof str === "string" && str.trim().length > 0;
+}
+
+function parseDate(dateStr: any): string | null {
+  if (typeof dateStr !== "string") return null;
+  const parsed = new Date(dateStr);
+  return isNaN(parsed.getTime()) ? null : parsed.toISOString().split("T")[0];
+}
 
 apiRouter.get("/", (c) => {
   return c.json({ message: "Student API" });
