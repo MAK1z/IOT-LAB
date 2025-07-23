@@ -1,12 +1,9 @@
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { env } from "hono/adapter";
-import { Myinfo } from "../db/schema.js";
 import drizzle from "../db/drizzle.js";
+import { Myinfo } from "../db/schema.js";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
-import { zValidator } from "@hono/zod-validator";
-
 const apiRouter = new Hono();
 
 function isValidString(str: any): str is string {
@@ -24,7 +21,7 @@ apiRouter.get("/", (c) => {
 });
 
 apiRouter.use(
-  "*",
+  "/*",
   bearerAuth({
     verifyToken: async (token, c) => {
       const { API_SECRET } = env<{ API_SECRET: string }>(c);
@@ -33,21 +30,18 @@ apiRouter.use(
   })
 );
 
-apiRouter.get("/myinfo", async (c) => {
+apiRouter.get("/student", async (c) => {
   const allStudent = await drizzle.select().from(Myinfo);
   return c.json(allStudent);
 });
 
-apiRouter.get("/myinfo:id", async (c) => {
-  const id = Number(c.req.param("Stdid"));
+apiRouter.get("/student/:studentId", async (c) => {
+  const studentId = c.req.param("studentId");
   const result = await drizzle.query.Myinfo.findFirst({
-    where: eq(Myinfo.Stdid, id),
-    with: {
-      genre: true,
-    },
+    where: eq(Myinfo.Stdid, studentId),
   });
   if (!result) {
-    return c.json({ error: "Book not found" }, 404);
+    return c.json({ error: "Student not found" }, 404);
   }
   return c.json(result);
 });
@@ -57,57 +51,71 @@ apiRouter.post("/student", async (c) => {
   if (typeof body !== 'object' || body === null) {
     return c.json({ success: false, message: "Invalid request body format" }, 400);
   }
-  const { Name, SurName, Stdid, DoB, Sex } = body;
+  const { Name, Surname, Stdid, DoB, Sex } = body;
    
-  if (!isValidString(Name)) return c.json({ success: false, message: "firstName is required" }, 400);
-  if(!isValidString(SurName)) return c.json({ success: false, message: "lastName is required" }, 400);
+  if (!isValidString(Name)) return c.json({ success: false, message: "Name is required" }, 400);
+  if(!isValidString(Surname)) return c.json({ success: false, message: "Lastname is required" }, 400);
   if(!isValidString(Stdid)) return c.json({ success: false, message: "studentId is required" }, 400);
   const birthDateString = parseDate(DoB);
-  if (!birthDateString) return c.json({ success: false, message: "birthDate must be a valid date string" }, 400);
+  if (!isValidString(DoB)) return c.json({ success: false, message: "birthDate must be a valid date string" }, 400);
   if(!isValidString(Sex)) return c.json({ success: false, message: "gender is required" }, 400);
   const result = await drizzle
     .insert(Myinfo)
     .values({
       Name,
-      SurName,
+      Surname,
       Stdid,
       DoB,
       Sex,
     })
     .returning();
-  return c.json({ success: true, students: result[0] }, 201);
+  return c.json({ success: true, Myinfo: result[0] }, 201);
 });
 
-apiRouter.patch(
-  "/:id",
-  zValidator(
-    "json",
-    z.object({
-      Name: z.string().min(1).optional(),
-      SurName: z.string().min(1).optional(),
-      Stdid: z.string().min(1).optional(),
-      DoB: z.string().min(1).optional(),
-      Sex: z.string().min(1).optional()
-    })
-  ),
-  async (c) => {
-    const id = Number(c.req.param("Stdid"));
-    const data = c.req.valid("json");
-    const updated = await drizzle.update(Myinfo).set(data).where(eq(Myinfo.Stdid, id)).returning();
-    if (updated.length === 0) {
-      return c.json({ error: "Book not found" }, 404);
-    }
-    return c.json({ success: true, book: updated[0] });
-  }
-);
+apiRouter.patch("/student/:studentId", async (c) => {
+  const body = await c.req.json();
+  const studentId = c.req.param("studentId");
 
-apiRouter.delete("/:id", async (c) => {
-  const id = Number(c.req.param("Stdid"));
-  const deleted = await drizzle.delete(Myinfo).where(eq(Myinfo.Stdid, id)).returning();
-  if (deleted.length === 0) {
-    return c.json({ error: "Book not found" }, 404);
+  if (typeof studentId !== "string" || studentId.trim() === "") {
+    return c.json({ success: false, message: "Invalid studentId" }, 400);
   }
-  return c.json({ success: true, book: deleted[0] });
+
+  const updates: any = {};
+  if (isValidString(body.Name)) updates.Name = body.Name;
+  if(!isValidString(body.Surname)) updates.Surname = body.Surname;
+  if(!isValidString(body.Sex)) updates.Sex = body.Sex;
+  const birthDateStr = parseDate(body.DoB);
+  if (birthDateStr) {
+    updates.birthDate = birthDateStr;
+  } 
+  else if (body.DoB !== undefined) {
+    return c.json({ success: false, message: "Invalid birthDate format" }, 400);
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return c.json({ success: false, message: "No valid fields to update" }, 400);
+  }
+
+  const updated = await drizzle
+    .update(Myinfo)
+    .set(updates)
+    .where(eq(Myinfo.Stdid, studentId))
+    .returning();
+
+  if (updated.length === 0) {
+    return c.json({ success: false, message: "Student not found" }, 404);
+  }
+
+  return c.json({ success: true, student: updated[0] });
+});
+
+apiRouter.delete("/student/:studentId", async (c) => {
+  const studentId = c.req.param("studentId");
+  const deleted = await drizzle.delete(Myinfo).where(eq(Myinfo.Stdid, studentId)).returning();
+  if (deleted.length === 0) {
+    return c.json({ error: "Student not found" }, 404);
+  }
+  return c.json({ success: true, students: deleted[0] });
 });
 
 export default apiRouter;
