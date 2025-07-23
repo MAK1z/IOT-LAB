@@ -28,7 +28,7 @@ apiRouter.get("/myinfo", async (c) => {
 apiRouter.get("/myinfo:id", async (c) => {
   const id = Number(c.req.param("Stdid"));
   const result = await drizzle.query.Myinfo.findFirst({
-    where: eq(Myinfo.Stdid, stdid),
+    where: eq(Myinfo.Stdid, id),
     with: {
       genre: true,
     },
